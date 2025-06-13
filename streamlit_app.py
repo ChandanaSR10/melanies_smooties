@@ -1,55 +1,46 @@
+# Import required packages
 import streamlit as st
-from snowflake.snowpark import Session
+from snowflake.snowpark.context import get_active_session
 from snowflake.snowpark.functions import col
 
-# -----------------------------
-# Page Config & Title
-# -----------------------------
-st.set_page_config(page_title="Smoothie Customizer", page_icon=":cup_with_straw:")
-st.title(":cup_with_straw: Customise Your Smoothie!")
-st.write("Choose exactly 5 fruits for your custom smoothie!")
+# App Title
+st.title(":cup_with_straw: Customize Your Smoothie! :cup_with_straw:")
+st.write("Choose the fruits you want in your custom Smoothie!")
 
-# -----------------------------
-# Snowflake Session Setup
-# -----------------------------
-@st.cache_resource
-def init_connection():
-    return Session.builder.configs({
-        'account': 'OLRKCFA-SGB76613',
-        'user': 'CHANDANA',
-        'password': 'Chandanaresmed@10',  # ❗Password included here (not safe for production)
-        'warehouse': 'COMPUTE_WH',
-        'database': 'SMOOTHIS',
-        'schema': 'PUBLIC'
-    }).create()
+# Establish Snowflake connection and session
+cnx = st.connection("snowflake")
+session = get_active_session()
 
-session = init_connection()
+# Load fruit options from Snowflake
+fruit_df = session.table("smoothis.public.fruit_options").select(col("FRUIT_NAME"))
+fruit_list = [row["FRUIT_NAME"] for row in fruit_df.collect()]
 
-# -----------------------------
-# Load Fruit Options
-# -----------------------------
-fruit_df = session.table("smoothis.public.fruit_options").select(col('FRUIT_NAME'))
-fruit_list = [row['FRUIT_NAME'] for row in fruit_df.collect()]
+# Input: Name of the smoothie
+smoothie_name = st.text_input("Name your smoothie")
+if smoothie_name:
+    st.write("The name of your smoothie will be:", smoothie_name)
 
-# -----------------------------
-# User Input
-# -----------------------------
-name_on_order = st.text_input("Name on Smoothie:")
-ingredients_selected = st.multiselect("Choose up to 5 ingredients", fruit_list, max_selections=5)
+# Multi-select for ingredients (max 5)
+selected_fruits = st.multiselect(
+    "Choose up to 5 ingredients",
+    fruit_list,
+    max_selections=5
+)
 
-# -----------------------------
-# Submit Order
-# -----------------------------
-if ingredients_selected and st.button("Submit Order"):
-    if len(ingredients_selected) != 5:
-        st.error("Please select exactly 5 ingredients.", icon="❌")
-    elif not name_on_order.strip():
-        st.error("Please enter your name for the smoothie order.", icon="❌")
-    else:
-        ingredients_string = ' '.join(ingredients_selected)
-        insert_query = f"""
-            INSERT INTO smoothis.public.orders (ingredients, name_on_order)
-            VALUES ('{ingredients_string}', '{name_on_order}')
-        """
+# Order Submission Section
+if selected_fruits and smoothie_name:
+    ingredients_string = ', '.join(selected_fruits)
+
+    insert_query = f"""
+        INSERT INTO smoothis.public.orders (ingredients, name_on_order)
+        VALUES ('{ingredients_string}', '{smoothie_name}')
+    """
+
+    st.code(insert_query, language="sql")
+
+    if st.button("Submit Order"):
         session.sql(insert_query).collect()
-        st.success(f"✅ {name_on_order}'s Smoothie has been ordered!")
+        st.success("Your Smoothie is ordered! 🥤", icon="✅")
+
+elif not smoothie_name and selected_fruits:
+    st.warning("Please enter a name for your smoothie.")
